@@ -12,7 +12,7 @@ CaseSwitcher let's you change filenames to either UPPERCASE or lowercase. It tak
 
 With the `rename` utility you are forced to come up with a regular expression which can be unintuitive and daunting if you are not familiar with regular expressions. CaseSwitcher, I believe is more intuitive; all you need to do is just supply the path to the directory and the case you want to rename the files to.
 
-Admittedly, the downside with CaseSwitcher is that you are forced to install PHP to use. But have no worries, there are plans to create a shell script to provide this same intuitive functionality.
+Admittedly, the downside with CaseSwitcher is that you are forced to install PHP. This means CaseSwitcher is not portable. Users without PHP or those who "hate" PHP cannot use it. But have no worries, there are plans to create a shell script to provide this same intuitive functionality.
 
 
 
