@@ -113,4 +113,4 @@ This is exactly the same as `caseswitcher -d /path/to/directory -l -r`
 |-u | Uppercase. This option instructs caseswitcher to change all filenames to uppercase. You cannot use this option together with `-l` option. | `caseswitcher -d path/to/directory -u` |
 |-r | Recursion. This instructs caseswitcher to recursively go through the directory and change the names  of all files and sub-folders to the specified case | `caseswitcher -d path/to/directory -l -u` |
 |-h | Help. Displays a help message. Please note that supplying this option will make caseswitcher display the help message and exit even if you supplied any other option. | `caseswitcher -h` |
-| |  |  |
+| -v | Verbose. This instructs CaseSwitcher to print to the terminal what it is doing. | `caseswitcher -d /path/to/directory -l -v` |
