@@ -1,87 +1,98 @@
 #! /usr/bin/env php
 <?php
-$arguments = getopt('d:rhlu');
-$help = isset($arguments['h']) ?: false;
-$recursion = isset($arguments['r']) ?: false;
-$directory = isset($arguments['d']) ? realpath($arguments['d']) : null;
-$lowercase = isset($arguments['l']) ?: false;
-$uppercase = isset($arguments['u']) ?: false;
-$case = getCase();
+$arguments = getCommandlineArguments(getopt('d:rhluv'));
 
-if (validateArguments()) {
-    $switcher = new CaseSwitcher($directory, $case, $recursion);
-    if ($switcher->rename()) {
-        sendFeedback('Your files were successfully renamed', 'success');
-    } else {
-        sendFeedback($switcher->getErrorMsg(), 'info');
+if ($arguments['help']) {
+    showHelp();
+    exit(1);
+}
+
+if (validateArguments($arguments)) {
+    try {
+        $switcher = new CaseSwitcher();
+        $switcher->setCase($arguments['case']);
+        $switcher->setDirectory($arguments['directory']);
+        $switcher->setRecursion($arguments['recursion']);
+        $switcher->setVerbosity($arguments['verbosity']);
+
+        if ($switcher->switchCase()) {
+            sendFeedback('Your files were successfully renamed', 'success');
+        } else {
+            sendFeedback($switcher->getErrorMsg(), 'info');
+        }
+
+    } catch (\Throwable $exception) {
+        sendFeedback($exception->getMessage(), 'error');
     }
 }
 
-
-function validateArguments()
+function getCommandlineArguments(array $cliOptions)
 {
-    global $help, $lowercase, $uppercase, $case, $recursion, $directory;
+    $arguments['help'] = isset($cliOptions['h']) ? : false;
+    $arguments['recursion'] = isset($cliOptions['r']) ? : false;
+    $arguments['directory'] = isset($cliOptions['d']) ? realpath($cliOptions['d']) : null;
+    $arguments['verbosity'] = isset($cliOptions['v']) ? : false;
+    $arguments['lowercase'] = isset($cliOptions['l']) ? : false;
+    $arguments['uppercase'] = isset($cliOptions['u']) ? : false;
+    $arguments['case'] = determineCase($arguments['lowercase'], $arguments['uppercase']);
 
-    if ($help) {
-        showHelp();
-        exit(1);
-    }
+    return $arguments;
+}
 
-    if (is_null($directory)) {
+function validateArguments(array $arguments)
+{
+    if (is_null($arguments['directory'])) {
         sendFeedback('Expected a directory. None supplied', 'error');
         showTip();
         exit(1);
-    } elseif ($directory === false) {
+    } elseif ($arguments['directory'] === false) {
         sendFeedback('You either supplied a non-existent directory or an invalid path. Please check', 'error');
         exit(1);
-    } elseif ($directory && !file_exists($directory)) {
+    } elseif ($arguments['directory'] && !file_exists($arguments['directory'])) {
         sendFeedback('The given directory does not exist', 'error');
         exit(1);
-    } elseif ($directory && file_exists($directory) && !is_dir($directory)) {
+    } elseif ($arguments['directory'] && file_exists($arguments['directory']) && !is_dir($arguments['directory'])) {
         sendFeedback('The given directory appears not to be a directory', 'error');
         exit(1);
-    } elseif ($directory && !is_writable($directory)) {
+    } elseif ($arguments['directory'] && !is_writable($arguments['directory'])) {
         sendFeedback('The given directory is not writable', 'error');
         exit(1);
     }
 
-    if (is_null($case)) {
+    if (is_null($arguments['case'])) {
         sendFeedback('You did not specify any case', 'error');
         showTip();
-    } elseif ($case === false) {
+        exit(1);
+    } elseif ($arguments['case'] === false) {
         sendFeedback("You can't use both '-l' and '-u'. It does not make sense", 'error');
+        showTip();
         exit(1);
     }
 
     return true;
 }
 
-
-function getCase()
+function determineCase($lowercase, $uppercase)
 {
-    global $lowercase, $uppercase;
     if ($lowercase && !$uppercase) {
-        $case = 'lower';
+        return 'lower';
     } elseif (!$lowercase && $uppercase) {
-        $case = 'upper';
+        return 'upper';
     } elseif ($lowercase && $uppercase) {
-        $case = false;
+        return false;
     } elseif (!$lowercase && !$uppercase) {
-        $case = null;
+        return null;
     }
-
-    return $case;
 }
-
 
 
 function sendFeedback($msg, $color = null, $newLine = true)
 {
-    $styles = array(
+    $styles = [
         'success' => "\e[1;32m%s\e[m",
         'error' => "\e[1;31;31m%s\e[m",
         'info' => "\e[1;33;33m%s\e[m"
-    );
+    ];
 
     $format = '%s';
 
@@ -141,26 +152,12 @@ HELP;
 
 class CaseSwitcher
 {
-    private $path;
-    private $case;          // Should the file be renamed to uppercase or lowercase?
+    private $directory;
+    private $case;
     private $recursion;
     private $errMsg;
-
-
-    /**
-     * Constructor
-     *
-     * @param string $path The path to the resource
-     * @param string $case The case to rename the files to. Defaults to 'lower'
-     * @param string $recursion Specifies if subfolders should also be renamed. Defaults to 'false'
-     */
-    public function __construct(string $path, string $case, bool $recursion)
-    {
-        $this->path = realpath($path);
-        $this->case = $case;
-        $this->recursion = $recursion;
-        // $this->restrictedPaths = array_map('realpath', $this->restrictedPaths);
-    }
+    private $verbosity;
+    private $iterator;
 
     /**
      * Checks if the supplied path is valid
@@ -169,7 +166,7 @@ class CaseSwitcher
      */
     private function isValid() : bool
     {
-        $dirContents = count(scandir($this->path));
+        $dirContents = count(scandir($this->directory));
         if ($dirContents <= 2) {
             $this->errMsg = 'Given directory is empty. Nothing here to rename';
             return false;
@@ -183,10 +180,11 @@ class CaseSwitcher
      *
      * @return bool
      */
-    public function rename() : bool
+    public function switchCase() : bool
     {
         if ($this->isValid()) {
-            return $this->renameDir();
+            $this->iterator = $this->createIterator();
+            return $this->renameDirContents($this->iterator);
         } else {
             return false;
         }
@@ -195,31 +193,44 @@ class CaseSwitcher
     /**
      * Rename contents of a directory either one level deep or recursively
      *
+     * @param Iterator $iterator The type of iterator to use
      * @return bool True if the renaming succeeds
      */
-    private function renameDir()
+    private function renameDirContents(Iterator $iterator)
     {
-        switch ($this->recursion) {
-            case true:
-                $iterator = new \RecursiveIteratorIterator(
-                    new \RecursiveDirectoryIterator($this->path),
-                    \RecursiveIteratorIterator::CHILD_FIRST
-                );
-                break;
-
-            case false:
-                $iterator = new \DirectoryIterator($this->path);
-                break;
-        }
-
         foreach ($iterator as $file) {
-            $oldName = $this->getOldName($file);
+            $oldName = $file->getPathName();
             $newName = $this->getNewName($file);
-            @rename($oldName, $newName);
+            $renamed = @rename($oldName, $newName);
+
+            if ($this->verbosity && $renamed) {
+                $this->reportVerbosity("{$oldName} was renamed to {$newName}");
+            }
         }
         return true;
     }
 
+    private function createIterator()
+    {
+        switch ($this->recursion) {
+            case true:
+                return new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator($this->directory),
+                    \RecursiveIteratorIterator::CHILD_FIRST
+                );
+                break;
+            case false:
+                return new \DirectoryIterator($this->directory);
+                break;
+            default:
+                throw new \Exception('Unknown iterator type supplied');
+        }
+    }
+
+    private function reportVerbosity($msg)
+    {
+        printf("[\e[1;32mOK\e[m] %s" . PHP_EOL, $msg);
+    }
 
     /**
      * Converts filename to the requested case
@@ -233,7 +244,6 @@ class CaseSwitcher
             case 'upper':
                 return strtoupper($fileName);
                 break;
-
             case 'lower':
                 return strtolower($fileName);
                 break;
@@ -278,16 +288,30 @@ class CaseSwitcher
         return "{$directory}" . DIRECTORY_SEPARATOR . "{$filename}{$fileExt}";
     }
 
-
-    /**
-     * Generate the old name of the file being renamed. This will be used by the
-     * rename() function.
-     *
-     * @param SplFileInfo $file. The file to be renamed will be an instance of SplFileInfo
-     * @return string The old name of the file before it was renamed.
-     */
-    private function getOldName(\SplFileInfo $file) : string
+    public function setDirectory(string $directory)
     {
-        return $file->getPathName();
+        $this->directory = realpath($directory);
+    }
+
+    public function setCase(string $case)
+    {
+        if (!in_array($case, ['lower', 'upper'])) {
+            throw new \Exception('Unrecognized case type. Use either \'lower\' or \'upper\'');
+            return false;
+        }
+
+        $this->case = $case;
+        return true;
+    }
+
+    public function setVerbosity(bool $verbosity)
+    {
+        $this->verbosity = $verbosity;
+    }
+
+    
+    public function setRecursion(bool $recursion)
+    {
+        $this->recursion = $recursion;
     }
 }
