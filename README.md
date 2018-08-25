@@ -72,7 +72,7 @@ CaseSwitcher is just a single PHP file called `caseswitcher`. You will need to d
 
 4. <b>That's it. Just launch your terminal and start using CaseSwitcher</b>
 
-### 
+
 
 ### How to use
 
@@ -111,6 +111,6 @@ This is exactly the same as `caseswitcher -d /path/to/directory -l -r`
 |-d [DIRECTORY]|Directory. This option is required and expects an argument<br>You supply the path to the directory whose contents you want to rename. The directory must exist, not empty and must be writable.| `caseswitcher -d path/to/directory` |
 |-l | Lowercase. This option instructs caseswitcher to change all filenames to lowercase.  You cannot use this option together with `-u` option. | `caseswitcher -d path/to/directory -l` |
 |-u | Uppercase. This option instructs caseswitcher to change all filenames to uppercase. You cannot use this option together with `-l` option. | `caseswitcher -d path/to/directory -u` |
-|-r | Recursion. This instructs caseswitcher to recursively go through the directory and change the names  of all files and sub-folders to the specified case | `caseswitcher -d path/to/directory -l -u` |
+|-r | Recursion. This instructs caseswitcher to recursively go through the directory and change the names  of all files and sub-folders to the specified case | `caseswitcher -d path/to/directory -l -u -r` |
 |-h | Help. Displays a help message. Please note that supplying this option will make caseswitcher display the help message and exit even if you supplied any other option. | `caseswitcher -h` |
 | -v | Verbose. This instructs CaseSwitcher to print to the terminal what it is doing. | `caseswitcher -d /path/to/directory -l -v` |
