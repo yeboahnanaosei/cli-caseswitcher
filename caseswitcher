@@ -1,162 +1,192 @@
 #! /usr/bin/env php
 <?php
-$arguments = getCommandlineArguments(getopt('d:rhluv'));
 
-if ($arguments['help']) {
-    showHelp();
-    exit(1);
-}
+new App();
 
-if (validateArguments($arguments)) {
-    try {
-        $switcher = new CaseSwitcher();
-        $switcher->setCase($arguments['case']);
-        $switcher->setDirectory($arguments['directory']);
-        $switcher->setRecursion($arguments['recursion']);
-        $switcher->setVerboseness($arguments['verbosity']);
+class App
+{
+    public function __construct()
+    {
 
-        if ($switcher->switchCase()) {
-            sendFeedback('Your files were successfully renamed', 'success');
-        } else {
-            sendFeedback($switcher->getErrorMsg(), 'info');
+        $arguments = $this->getCommandlineArguments(getopt('d:rhluv'));
+
+        if ($arguments['help']) {
+            $this->showHelp();
+            exit(1);
         }
 
-    } catch (\Throwable $exception) {
-        sendFeedback($exception->getMessage(), 'error');
-    }
-}
+        if ($this->validateArguments($arguments)) {
+            try {
+                $switcher = new CaseSwitcher();
+                $switcher->setCase($arguments['case']);
+                $switcher->setDirectory($arguments['directory']);
+                $switcher->setRecursion($arguments['recursion']);
+                $switcher->setVerboseness($arguments['verboseness']);
 
-/**
- * Processes and gets the options supplied via the command line as well
- * as their values
- *
- * @param array $cliOptions An array of command line options supplied to the script
- * @return array $arguments An array of the options and their values
- */
-function getCommandlineArguments(array $cliOptions): array
-{
-    $arguments['help'] = isset($cliOptions['h']) ? : false;
-    $arguments['recursion'] = isset($cliOptions['r']) ? : false;
-    $arguments['directory'] = isset($cliOptions['d']) ? realpath($cliOptions['d']) : null;
-    $arguments['verbosity'] = isset($cliOptions['v']) ? : false;
-    $arguments['lowercase'] = isset($cliOptions['l']) ? : false;
-    $arguments['uppercase'] = isset($cliOptions['u']) ? : false;
-    $arguments['case'] = determineCase($arguments['lowercase'], $arguments['uppercase']);
+                if ($switcher->switchCase()) {
+                    $this->sendFeedback('Your files were successfully renamed', 'success');
+                } else {
+                    $this->sendFeedback($switcher->getErrorMsg(), 'info');
+                }
 
-    return $arguments;
-}
-
-/**
- * Validates and ensures that the options or arguments supplied via
- * the command line are valid and can be used.
- *
- * @param array $arguments An array of arguments from the command line
- * @return bool Returns true if all arguments are found to be valid. Exits on failure
- */
-function validateArguments(array $arguments): bool
-{
-    if (is_null($arguments['directory'])) {
-        sendFeedback('Expected a directory. None supplied', 'error');
-        showTip();
-        exit(1);
-    } elseif ($arguments['directory'] === false) {
-        sendFeedback('You either supplied a non-existent directory or an invalid path. Please check', 'error');
-        exit(1);
-    } elseif ($arguments['directory'] && !file_exists($arguments['directory'])) {
-        sendFeedback('The given directory does not exist', 'error');
-        exit(1);
-    } elseif ($arguments['directory'] && file_exists($arguments['directory']) && !is_dir($arguments['directory'])) {
-        sendFeedback('The given directory appears not to be a directory', 'error');
-        exit(1);
-    } elseif ($arguments['directory'] && !is_writable($arguments['directory'])) {
-        sendFeedback('The given directory is not writable', 'error');
-        exit(1);
+            } catch (\Throwable $exception) {
+                $this->sendFeedback($exception->getMessage(), 'error');
+            }
+        }
     }
 
-    if (is_null($arguments['case'])) {
-        sendFeedback('You did not specify any case', 'error');
-        showTip();
-        exit(1);
-    } elseif ($arguments['case'] === false) {
-        sendFeedback("You can't use both '-l' and '-u'. It does not make sense", 'error');
-        showTip();
-        exit(1);
+
+    /**
+     * Processes and gets the options supplied via the command line as well
+     * as their values
+     *
+     * @param array $cliOptions An array of command line options supplied to the script
+     * @return array $arguments An array of the options and their values
+     */
+    private function getCommandlineArguments(array $cliOptions) : array
+    {
+        $arguments['help'] = isset($cliOptions['h']) ?: false;
+        $arguments['recursion'] = isset($cliOptions['r']) ?: false;
+        $arguments['directory'] = isset($cliOptions['d']) ? realpath($cliOptions['d']) : null;
+        $arguments['verboseness'] = isset($cliOptions['v']) ?: false;
+        $arguments['lowercase'] = isset($cliOptions['l']) ?: false;
+        $arguments['uppercase'] = isset($cliOptions['u']) ?: false;
+        $arguments['case'] = $this->determineCase($arguments['lowercase'], $arguments['uppercase']);
+
+        return $arguments;
     }
 
-    return true;
-}
+    /**
+     * Validates and ensures that the options or arguments supplied via
+     * the command line are valid and can be used.
+     *
+     * @param array $arguments An array of arguments from the command line
+     * @return bool Returns true if all arguments are found to be valid. Exits on failure
+     */
+    private function validateArguments(array $arguments) : bool
+    {
+        if ($this->validateDirectory($arguments['directory']) &&
+            $this->validateCase($arguments['case'])
+        ) {
+            return true;
+        } else {
+            return false;
+        }
 
-/**
- * Determines the case to be used in renameing files
- *
- * @param bool $lowercase True if lowercase was specified at the command prompt
- * @param bool $uppercase True if uppercase was specified at the command prompt
- * @return mixed Returns 'lower' if lowercase was determined, 'upper' if upperca
- * was determined. False or null represents an error situation
- */
-function determineCase($lowercase, $uppercase)
-{
-    if ($lowercase && !$uppercase) {
-        return 'lower';
-    } elseif (!$lowercase && $uppercase) {
-        return 'upper';
-    } elseif ($lowercase && $uppercase) {
-        return false;
-    } elseif (!$lowercase && !$uppercase) {
-        return null;
-    }
-}
-
-
-/**
- * Sends feedback to output
- *
- * @param string $msg The feedback message
- * @param string $type The type of feedback (error, success, info)
- * @param boolean $newLine Whether to append a newline at end of feedback. True by default
- */
-function sendFeedback($msg, $type = null, $newLine = true)
-{
-    $styles = [
-        'success' => "\e[1;32m%s\e[m",
-        'error' => "\e[1;31;31m%s\e[m",
-        'info' => "\e[1;33;33m%s\e[m"
-    ];
-
-    $format = '%s';
-
-    if (isset($styles[$type])) {
-        $format = $styles[$type];
     }
 
-    if ($newLine) {
-        $format .= PHP_EOL;
+
+    private function validateDirectory(?string $directoryPath): bool
+    {
+        if (is_null($directoryPath)) {
+            $this->sendFeedback('Expected a directory. None supplied', 'error');
+            $this->showTip();
+            exit(1);
+        } elseif ($directoryPath === false) {
+            $this->sendFeedback(
+                'You either supplied a non-existent directory or an invalid path. Please check',
+                'error'
+            );
+            exit(1);
+        } elseif ($directoryPath && !file_exists($directoryPath)) {
+            $this->sendFeedback('The given directory does not exist', 'error');
+            exit(1);
+        } elseif ($directoryPath && file_exists($directoryPath) && !is_dir($directoryPath)) {
+            $this->sendFeedback('The given directory appears not to be a directory', 'error');
+            exit(1);
+        } elseif ($directoryPath && !is_writable($directoryPath)) {
+            $this->sendFeedback('The given directory is not writable', 'error');
+            exit(1);
+        }
+
+        return true;
     }
 
-    printf($format, $msg);
-}
+    private function validateCase(?string $case): bool
+    {
+        if (is_null($case)) {
+            $this->sendFeedback('You did not specify any case', 'error');
+            $this->showTip();
+            exit(1);
+        } elseif ($case === false) {
+            $this->sendFeedback("You can't use both '-l' and '-u'. It does not make sense", 'error');
+            $this->showTip();
+            exit(1);
+        }
+        return true;
+    }
 
-/**
- * Prints a tip to output showing how help can be obtained
- *
- * @return void
- */
-function showTip()
-{
-    echo <<<TIP
+    /**
+     * Determines the case to be used in renameing files
+     *
+     * @param bool $lowercase True if lowercase was specified at the command prompt
+     * @param bool $uppercase True if uppercase was specified at the command prompt
+     * @return string|null|false Returns 'lower' if lowercase was determined, 'upper' if upperca
+     * was determined. False or null represents an error situation
+     */
+    private function determineCase($lowercase, $uppercase)
+    {
+        if ($lowercase && !$uppercase) {
+            return 'lower';
+        } elseif (!$lowercase && $uppercase) {
+            return 'upper';
+        } elseif ($lowercase && $uppercase) {
+            return false;
+        } elseif (!$lowercase && !$uppercase) {
+            return null;
+        }
+    }
+
+
+    /**
+     * Sends feedback to output
+     *
+     * @param string $msg The feedback message
+     * @param string $type The type of feedback (error, success, info)
+     * @param bool $newLine Whether to append a newline at end of feedback. True by default
+     */
+    private function sendFeedback($msg, $type = null, $newLine = true)
+    {
+        $styles = [
+            'success' => "\e[1;32m%s\e[m",
+            'error' => "\e[1;31;31m%s\e[m",
+            'info' => "\e[1;33;33m%s\e[m"
+        ];
+
+        $format = '%s';
+
+        if (isset($styles[$type])) {
+            $format = $styles[$type];
+        }
+
+        if ($newLine) {
+            $format .= PHP_EOL;
+        }
+
+        printf($format, $msg);
+    }
+
+    /**
+     * Prints a tip to output showing how help can be obtained
+     *
+     * @return void
+     */
+    private function showTip()
+    {
+        echo <<<TIP
 Type caseswitcher -h for help
 
 TIP;
-}
+    }
 
-/**
- * Prints a help message to output
- *
- * @return void
- */
-function showHelp()
-{
-    echo <<<HELP
+    /**
+     * Prints a help message to output
+     *
+     * @return void
+     */
+    private function showHelp()
+    {
+        echo <<<HELP
 
 Caseswitcher help
 -----------------
@@ -185,8 +215,8 @@ lowercase or -u for uppercase. However, you can't use both -l and -u
 together. It won't make sense.
 \n
 HELP;
+    }
 }
-
 
 
 class CaseSwitcher
@@ -208,7 +238,7 @@ class CaseSwitcher
     /**
      * Should CaseSwitcher switch filenames recursively?
      *
-     * @var boolean
+     * @var bool
      */
     private $recursion;
 
@@ -222,12 +252,12 @@ class CaseSwitcher
     /**
      * The state of verboseness of CaseSwitcher
      *
-     * @var boolean
+     * @var bool
      */
     private $verboseness;
 
     /**
-     * Iterator to be used based on recursion
+     * Iterator to be used in renaming files
      *
      * @var iterator
      */
@@ -270,7 +300,7 @@ class CaseSwitcher
      * @param Iterator $iterator The type of iterator to use
      * @return bool True if the renaming succeeds
      */
-    private function renameDirContents(Iterator $iterator)
+    private function renameDirContents(\Iterator $iterator)
     {
         foreach ($iterator as $file) {
             $oldName = $file->getPathName();
@@ -290,6 +320,7 @@ class CaseSwitcher
      * the directory
      *
      * @return void
+     * @throws UnexpectedValueException
      */
     private function createIterator()
     {
@@ -304,7 +335,7 @@ class CaseSwitcher
                 return new \DirectoryIterator($this->directory);
                 break;
             default:
-                throw new \Exception('Unknown iterator type supplied');
+                throw new \UnexpectedValueException('Unknown iterator type supplied');
         }
     }
 
@@ -343,7 +374,7 @@ class CaseSwitcher
      *
      * @return string The extension of the file
      */
-    private function getExtension($file)
+    private function getExtension($file): string
     {
         return (empty($file)) ? '' : ".{$file}";
     }
@@ -371,8 +402,8 @@ class CaseSwitcher
     {
         $directory = $file->getPath();
         $filename = $this->changeCase(pathinfo($file->getFilename(), PATHINFO_FILENAME));
-        $fileExt = $this->getExtension($file->getExtension());
-        return "{$directory}" . DIRECTORY_SEPARATOR . "{$filename}{$fileExt}";
+        $fileExtension = $this->getExtension($file->getExtension());
+        return "{$directory}" . DIRECTORY_SEPARATOR . "{$filename}{$fileExtension}";
     }
 
     /**
@@ -390,12 +421,13 @@ class CaseSwitcher
      * Sets the case to switch filenames to
      *
      * @param string $case The case. Valid arguments are: 'upper' or 'lower'
-     * @return boolean True if successful, False if invalid case type is supplied
+     * @return bool True if successful, False if invalid case type is supplied
+     * @throws UnexpectedValueException
      */
     public function setCase(string $case)
     {
         if (!in_array($case, ['lower', 'upper'])) {
-            throw new \Exception('Unrecognized case type. Use either \'lower\' or \'upper\'');
+            throw new \UnexpectedValueException('Unrecognized case type. Use either \'lower\' or \'upper\'');
             return false;
         }
 
@@ -419,7 +451,7 @@ class CaseSwitcher
      * Instructs CaseSwitcher whether to rename files recursively or not
      * Defaults to False
      *
-     * @param boolean $recursion True to rename recursively. Defaults to False
+     * @param bool $recursion True to rename recursively. Defaults to False
      * @return void
      */
     public function setRecursion(bool $recursion)
