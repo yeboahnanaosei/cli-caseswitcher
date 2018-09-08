@@ -8,11 +8,11 @@ class App
     public function __construct()
     {
 
-        $arguments = $this->getCommandlineArguments(getopt('d:rhluv'));
+        $arguments = $this->parseArguments(getopt('d:rhluv'));
 
         if ($arguments['help']) {
             $this->showHelp();
-            exit(1);
+            exit(0);
         }
 
         if ($this->validateArguments($arguments)) {
@@ -43,7 +43,7 @@ class App
      * @param array $cliOptions An array of command line options supplied to the script
      * @return array $arguments An array of the options and their values
      */
-    private function getCommandlineArguments(array $cliOptions) : array
+    private function parseArguments(array $cliOptions) : array
     {
         $arguments['help'] = isset($cliOptions['h']) ?: false;
         $arguments['recursion'] = isset($cliOptions['r']) ?: false;
