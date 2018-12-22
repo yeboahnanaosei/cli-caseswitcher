@@ -1,34 +1,32 @@
 #! /usr/bin/env php
 <?php
-
 new App();
 
 class App
 {
     public function __construct()
     {
+        $args = $this->parseArgs(getopt('d:rhluv'));
 
-        $arguments = $this->parseArguments(getopt('d:rhluv'));
-
-        if ($arguments['help']) {
+        if ($args['help']) {
             $this->showHelp();
             exit(0);
         }
 
-        if ($this->validateArguments($arguments)) {
+        if ($this->validateArgs($args)) {
             try {
                 $switcher = new CaseSwitcher();
-                $switcher->setCase($arguments['case']);
-                $switcher->setDirectory($arguments['directory']);
-                $switcher->setRecursion($arguments['recursion']);
-                $switcher->setVerboseness($arguments['verboseness']);
+                $switcher->setCase($args['case']);
+                $switcher->setDirectory($args['directory']);
+                $switcher->setRecursion($args['recursion']);
+                $switcher->setVerboseness($args['verboseness']);
 
-                if ($switcher->switchCase()) {
+                if ($switcher->run()) {
                     $this->sendFeedback('Your files were successfully renamed', 'success');
+                    exit(0);
                 } else {
                     $this->sendFeedback($switcher->getErrorMsg(), 'info');
                 }
-
             } catch (\Throwable $exception) {
                 $this->sendFeedback($exception->getMessage(), 'error');
             }
@@ -43,16 +41,15 @@ class App
      * @param array $cliOptions An array of command line options supplied to the script
      * @return array $arguments An array of the options and their values
      */
-    private function parseArguments(array $cliOptions) : array
+    private function parseArgs(array $cliOptions) : array
     {
-        $arguments['help'] = isset($cliOptions['h']) ?: false;
-        $arguments['recursion'] = isset($cliOptions['r']) ?: false;
+        $arguments['help'] = isset($cliOptions['h']) ? : false;
+        $arguments['recursion'] = isset($cliOptions['r']) ? : false;
         $arguments['directory'] = isset($cliOptions['d']) ? realpath($cliOptions['d']) : null;
-        $arguments['verboseness'] = isset($cliOptions['v']) ?: false;
-        $arguments['lowercase'] = isset($cliOptions['l']) ?: false;
-        $arguments['uppercase'] = isset($cliOptions['u']) ?: false;
+        $arguments['verboseness'] = isset($cliOptions['v']) ? : false;
+        $arguments['lowercase'] = isset($cliOptions['l']) ? : false;
+        $arguments['uppercase'] = isset($cliOptions['u']) ? : false;
         $arguments['case'] = $this->determineCase($arguments['lowercase'], $arguments['uppercase']);
-
         return $arguments;
     }
 
@@ -60,14 +57,14 @@ class App
      * Validates and ensures that the options or arguments supplied via
      * the command line are valid and can be used.
      *
-     * @param array $arguments An array of arguments from the command line
-     * @return bool Returns true if all arguments are found to be valid. Exits on failure
+     * @param array $arguments An associative array of arguments from the command line
+     * @return bool Returns true if all arguments are found to be valid.
+     * False if any one of them is not valid
      */
-    private function validateArguments(array $arguments) : bool
+    private function validateArgs(array $args) : bool
     {
-        if ($this->validateDirectory($arguments['directory']) &&
-            $this->validateCase($arguments['case'])
-        ) {
+        if ($this->validateDirectory($args['directory']) &&
+            $this->validateCase($args['case'])) {
             return true;
         } else {
             return false;
@@ -75,34 +72,23 @@ class App
 
     }
 
-
-    private function validateDirectory(?string $directoryPath): bool
+    private function validateDirectory(string $dir = null) : bool
     {
-        if (is_null($directoryPath)) {
+        if (is_null($dir)) {
             $this->sendFeedback('Expected a directory. None supplied', 'error');
             $this->showTip();
             exit(1);
-        } elseif ($directoryPath === false) {
+        } elseif ($dir === false) {
             $this->sendFeedback(
                 'You either supplied a non-existent directory or an invalid path. Please check',
                 'error'
             );
             exit(1);
-        } elseif ($directoryPath && !file_exists($directoryPath)) {
-            $this->sendFeedback('The given directory does not exist', 'error');
-            exit(1);
-        } elseif ($directoryPath && file_exists($directoryPath) && !is_dir($directoryPath)) {
-            $this->sendFeedback('The given directory appears not to be a directory', 'error');
-            exit(1);
-        } elseif ($directoryPath && !is_writable($directoryPath)) {
-            $this->sendFeedback('The given directory is not writable', 'error');
-            exit(1);
         }
-
         return true;
     }
 
-    private function validateCase(?string $case): bool
+    private function validateCase($case) : bool
     {
         if (is_null($case)) {
             $this->sendFeedback('You did not specify any case', 'error');
@@ -113,6 +99,7 @@ class App
             $this->showTip();
             exit(1);
         }
+
         return true;
     }
 
@@ -126,14 +113,22 @@ class App
      */
     private function determineCase($lowercase, $uppercase)
     {
-        if ($lowercase && !$uppercase) {
-            return 'lower';
-        } elseif (!$lowercase && $uppercase) {
-            return 'upper';
-        } elseif ($lowercase && $uppercase) {
-            return false;
-        } elseif (!$lowercase && !$uppercase) {
-            return null;
+        switch (true) {
+            case $lowercase === true && $uppercase === false:
+                return 'lower';
+                break;
+
+            case $lowercase === false && $uppercase === true:
+                return 'upper';
+                break;
+
+            case $lowercase === true && $uppercase === true:
+                return false;
+                break;
+
+            case $lowercase === false && $uppercase === false:
+                return null;
+                break;
         }
     }
 
@@ -264,34 +259,27 @@ class CaseSwitcher
     private $iterator;
 
     /**
-     * Checks if the supplied path is valid
-     *
-     * @return bool True if the path is valid, False if it isn't
+     * A list of forbidden paths this system cannot touch
      */
-    private function isValid() : bool
-    {
-        $dirContents = count(scandir($this->directory));
-        if ($dirContents <= 2) {
-            $this->errMsg = 'Given directory is empty. Nothing here to rename';
-            return false;
-        }
-        return true;
-    }
+    private $restrictedPaths = [
+        '/'
+    ];
 
+
+    public function __construct()
+    {
+        $this->restrictedPaths[] = getenv('HOME');
+    }
 
     /**
      * Rename the the directory contents to the specified case.
      *
      * @return bool
      */
-    public function switchCase() : bool
+    public function run() : bool
     {
-        if ($this->isValid()) {
-            $this->iterator = $this->createIterator();
-            return $this->renameDirContents($this->iterator);
-        } else {
-            return false;
-        }
+        $this->iterator = $this->createIterator();
+        return $this->renameFiles();
     }
 
     /**
@@ -300,9 +288,9 @@ class CaseSwitcher
      * @param Iterator $iterator The type of iterator to use
      * @return bool True if the renaming succeeds
      */
-    private function renameDirContents(\Iterator $iterator)
+    private function renameFiles() : bool
     {
-        foreach ($iterator as $file) {
+        foreach ($this->iterator as $file) {
             $oldName = $file->getPathName();
             $newName = $this->getNewName($file);
             $renamed = @rename($oldName, $newName);
@@ -331,9 +319,11 @@ class CaseSwitcher
                     \RecursiveIteratorIterator::CHILD_FIRST
                 );
                 break;
+
             case false:
                 return new \DirectoryIterator($this->directory);
                 break;
+
             default:
                 throw new \UnexpectedValueException('Unknown iterator type supplied');
         }
@@ -374,7 +364,7 @@ class CaseSwitcher
      *
      * @return string The extension of the file
      */
-    private function getExtension($file): string
+    private function getExtension($file) : string
     {
         return (empty($file)) ? '' : ".{$file}";
     }
@@ -414,7 +404,23 @@ class CaseSwitcher
      */
     public function setDirectory(string $directory)
     {
-        $this->directory = realpath($directory);
+        $directory = realpath($directory);
+        if (in_array($directory, $this->restrictedPaths)) {
+            throw new \Exception('The supplied path is forbidden');
+        } elseif (is_null($directory)) {
+            throw new \Exception('Expected a directory. None supplied');
+        } elseif ($directory && !file_exists($directory)) {
+            throw new \Exception('The given directory does not exist');
+        } elseif ($directory && file_exists($directory) && !is_dir($directory)) {
+            throw new \Exception('The given directory appears not to be a directory');
+        } elseif ($directory && !is_writable($directory)) {
+            throw new \Exception('The given directory is not writable');
+        } elseif (count(scandir($directory)) <= 2) {
+            throw new \Exception('Given directory is empty. Nothing here to rename');
+        }
+
+        $this->directory = $directory;
+        return true;
     }
 
     /**
@@ -428,7 +434,6 @@ class CaseSwitcher
     {
         if (!in_array($case, ['lower', 'upper'])) {
             throw new \UnexpectedValueException('Unrecognized case type. Use either \'lower\' or \'upper\'');
-            return false;
         }
 
         $this->case = $case;
